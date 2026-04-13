@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Inventory Elite Clean</title>
+
+<style>
+* { box-sizing: border-box; font-family: 'Segoe UI'; }
+
+body {
+    margin: 0;
+    background: linear-gradient(135deg,#022c22,#1e1b4b,#4c1d95,#7c2d12);
+    color: white;
+}
+
+header {
+    text-align: center;
+    padding: 15px;
+    font-size: 24px;
+    font-weight: bold;
+    background: linear-gradient(90deg,gold,#a855f7);
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+#clock {
+    font-size: 14px;
+    color: gold;
+}
+
+/* layout */
+.container {
+    max-width: 1200px;
+    margin: auto;
+    padding: 20px;
+}
+
+.card {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 0 20px rgba(168,85,247,0.3);
+}
+
+/* input */
+input {
+    padding: 10px;
+    margin: 5px;
+    border-radius: 6px;
+    border: none;
+    width: 22%;
+}
+
+/* button */
+button {
+    padding: 10px;
+    margin: 5px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.btn-main { background: linear-gradient(90deg,gold,#a855f7); color:black; }
+.btn-del { background:#ef4444; color:white; }
+.btn-edit { background:#22c55e; color:white; }
+
+/* table */
+table { width:100%; border-collapse:collapse; }
+
+th {
+    background:#14532d;
+    color:gold;
+    cursor:pointer;
+}
+
+td,th {
+    padding:10px;
+    border-bottom:1px solid #166534;
+    text-align:center;
+}
+
+.highlight {
+    background: rgba(168,85,247,0.3);
+}
+
+.stat {
+    display:flex;
+    flex-wrap:wrap;
+    gap:15px;
+    color:gold;
+}
+
+/* toast */
+.toast {
+    position:fixed;
+    bottom:20px;
+    right:20px;
+    background:#a855f7;
+    padding:10px 20px;
+    border-radius:8px;
+    display:none;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+🚀 INVENTORY ELITE
+<div id="clock"></div>
+</header>
+
+<div class="container">
+
+<div class="card">
+<input type="date" id="tgl">
+<input type="number" id="thn" placeholder="Tahun">
+<input type="text" id="nama" placeholder="Penerima">
+<input type="number" id="stok" placeholder="Stock">
+<button class="btn-main" onclick="save()">Simpan</button>
+<button class="btn-del" onclick="resetData()">Reset</button>
+</div>
+
+<div class="card">
+<input type="text" id="search" placeholder="Cari..." oninput="render()">
+<button class="btn-main" onclick="exportCSV()">Export</button>
+</div>
+
+<div class="card stat">
+<div id="totalData"></div>
+<div id="totalStock"></div>
+<div id="avg"></div>
+<div id="max"></div>
+<div id="min"></div>
+</div>
+
+<div class="card">
+<table>
+<thead>
+<tr>
+<th onclick="sort('id')">ID</th>
+<th onclick="sort('tgl')">Tanggal</th>
+<th onclick="sort('thn')">Tahun</th>
+<th onclick="sort('nama')">Penerima</th>
+<th onclick="sort('stok')">Stock</th>
+<th>Aksi</th>
+</tr>
+</thead>
+<tbody id="tb"></tbody>
+</table>
+</div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+let db = JSON.parse(localStorage.getItem("elite_db")) || [];
+let editIndex = -1;
+let asc = true;
+
+/* CLOCK */
+setInterval(()=>{
+    document.getElementById("clock").innerText = new Date().toLocaleString();
+},1000);
+
+/* TOAST */
+function toast(msg){
+    const t = document.getElementById("toast");
+    t.innerText = msg;
+    t.style.display = "block";
+    setTimeout(()=>t.style.display="none",2000);
+}
+
+/* SAVE */
+function save(){
+    let t = tgl.value;
+    let y = thn.value;
+    let n = nama.value.trim();
+    let s = stok.value;
+
+    if(!t || !y || !n || !s){
+        toast("Semua field wajib diisi");
+        return;
+    }
+
+    if(Number(s) < 0){
+        toast("Stock tidak valid");
+        return;
+    }
+
+    let obj = {
+        id: editIndex === -1 ? Date.now() : db[editIndex].id,
+        tgl: t,
+        thn: y,
+        nama: n,
+        stok: Number(s)
+    };
+
+    if(editIndex === -1){
+        db.push(obj);
+        toast("Data ditambahkan");
+    } else {
+        db[editIndex] = obj;
+        editIndex = -1;
+        toast("Data diperbarui");
+    }
+
+    localStorage.setItem("elite_db", JSON.stringify(db));
+    clear();
+    render();
+}
+
+/* RENDER */
+function render(){
+    const keyword = search.value.toLowerCase();
+    const tb = document.getElementById("tb");
+    tb.innerHTML = "";
+
+    let total = 0;
+    let max = 0;
+    let min = Infinity;
+
+    let filtered = db.filter(d =>
+        d.nama.toLowerCase().includes(keyword) ||
+        String(d.thn).includes(keyword) ||
+        d.tgl.includes(keyword)
+    );
+
+    filtered.forEach(d => {
+        const realIndex = db.findIndex(x => x.id === d.id);
+
+        total += d.stok;
+        max = Math.max(max, d.stok);
+        min = Math.min(min, d.stok);
+
+        tb.innerHTML += `
+        <tr>
+        <td>${d.id}</td>
+        <td>${d.tgl}</td>
+        <td>${d.thn}</td>
+        <td>${d.nama}</td>
+        <td>${d.stok}</td>
+        <td>
+            <button class="btn-edit" onclick="edit(${realIndex})">Edit</button>
+            <button class="btn-del" onclick="hapus(${realIndex})">Hapus</button>
+        </td>
+        </tr>`;
+    });
+
+    totalData.innerText = "Total Data: " + filtered.length;
+    totalStock.innerText = "Total Stock: " + total;
+    avg.innerText = "Rata-rata: " + (filtered.length ? (total/filtered.length).toFixed(1) : 0);
+    max.innerText = "Max: " + max;
+    min.innerText = "Min: " + (min === Infinity ? 0 : min);
+}
+
+/* EDIT */
+function edit(i){
+    const d = db[i];
+    tgl.value = d.tgl;
+    thn.value = d.thn;
+    nama.value = d.nama;
+    stok.value = d.stok;
+    editIndex = i;
+}
+
+/* DELETE */
+function hapus(i){
+    if(confirm("Hapus data ini?")){
+        db.splice(i,1);
+        localStorage.setItem("elite_db", JSON.stringify(db));
+        toast("Data dihapus");
+        render();
+    }
+}
+
+/* RESET */
+function resetData(){
+    if(confirm("Hapus semua data?")){
+        db = [];
+        localStorage.removeItem("elite_db");
+        render();
+        toast("Semua data dihapus");
+    }
+}
+
+/* SORT */
+function sort(k){
+    db.sort((a,b)=>{
+        if(typeof a[k] === "number" && typeof b[k] === "number"){
+            return asc ? a[k]-b[k] : b[k]-a[k];
+        }
+        return asc
+            ? String(a[k]).localeCompare(String(b[k]))
+            : String(b[k]).localeCompare(String(a[k]));
+    });
+    asc = !asc;
+    render();
+}
+
+/* EXPORT */
+function exportCSV(){
+    let csv = "ID,Tanggal,Tahun,Penerima,Stock\n";
+    db.forEach(d=>{
+        csv += `${d.id},${d.tgl},${d.thn},${d.nama},${d.stok}\n`;
+    });
+
+    let blob = new Blob([csv], { type:"text/csv" });
+    let a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "inventory_elite.csv";
+    a.click();
+
+    toast("Export berhasil");
+}
+
+/* CLEAR */
+function clear(){
+    tgl.value = "";
+    thn.value = "";
+    nama.value = "";
+    stok.value = "";
+}
+
+/* INIT */
+render();
+</script>
+
+</body>
+</html>
